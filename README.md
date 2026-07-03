@@ -8,6 +8,13 @@ Early scaffold / experimental project.
 
 Pulsebus is being built as a small, local-first Elixir/OTP project. The initial goal is to prove the core event bus shape before adding persistence, desktop notifications, a CLI wrapper, or any dashboard/TUI surface.
 
+## Development
+
+```bash
+mix format
+mix test
+```
+
 ## Why this exists
 
 Pulsebus is a small side project for learning and using Erlang/Elixir in a place where using the BEAM runtime makes sense.
