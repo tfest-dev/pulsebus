@@ -11,8 +11,31 @@ Pulsebus is being built as a small, local-first Elixir/OTP project. The initial 
 ## Development
 
 ```bash
+mix deps.get
 mix format
 mix test
+```
+
+## Local HTTP usage
+
+Pulsebus starts a local HTTP server on `127.0.0.1:4040` by default.
+
+```bash
+curl localhost:4040/health
+```
+
+Emit an event:
+
+```bash
+curl -X POST localhost:4040/events \
+  -H "content-type: application/json" \
+  -d '{"topic":"repo.tests.failed","source":"repo","payload":{"cmd":"cargo test"}}'
+```
+
+Read recent events, newest first:
+
+```bash
+curl localhost:4040/events/recent
 ```
 
 ## Why this exists
@@ -177,9 +200,9 @@ model.*
 website.deploy.*
 ```
 
-## Planned API surface
+## HTTP API surface
 
-The eventual local HTTP surface may look like:
+Pulsebus exposes a small local HTTP surface:
 
 ```text
 POST /events
@@ -195,7 +218,7 @@ curl -X POST localhost:4040/events \
   -d '{"topic":"repo.tests.failed","source":"repo","payload":{"cmd":"cargo test"}}'
 ```
 
-The exact HTTP implementation may change during early development. The important part is the internal event model and routing behaviour.
+The HTTP implementation is intentionally thin. Event validation and routing stay inside the OTP event router.
 
 ## Planned CLI surface
 
