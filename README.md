@@ -38,6 +38,40 @@ Read recent events, newest first:
 curl localhost:4040/events/recent
 ```
 
+## CLI usage
+
+Build the local CLI escript:
+
+```bash
+mix escript.build
+```
+
+Check the running service:
+
+```bash
+./pulse health
+```
+
+Emit an event:
+
+```bash
+./pulse emit repo.tests.failed \
+  --source repo \
+  --json '{"cmd":"cargo test","exit_code":101}'
+```
+
+Read recent events:
+
+```bash
+./pulse recent
+```
+
+The CLI defaults to `http://127.0.0.1:4040`. Override it with `PULSEBUS_URL`:
+
+```bash
+PULSEBUS_URL=http://127.0.0.1:4040 ./pulse health
+```
+
 ## Why this exists
 
 Pulsebus is a small side project for learning and using Erlang/Elixir in a place where using the BEAM runtime makes sense.

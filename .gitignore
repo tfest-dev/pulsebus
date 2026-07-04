@@ -4,6 +4,7 @@
 /cover/
 erl_crash.dump
 *.ez
+/pulse
 
 !/lib/
 !/lib/**

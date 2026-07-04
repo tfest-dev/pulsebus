@@ -7,13 +7,14 @@ defmodule Pulsebus.MixProject do
       version: "0.1.0",
       elixir: "~> 1.17",
       start_permanent: Mix.env() == :prod,
+      escript: [main_module: Pulsebus.CLI, path: "pulse", app: nil],
       deps: deps()
     ]
   end
 
   def application do
     [
-      extra_applications: [:logger],
+      extra_applications: [:inets, :logger],
       mod: {Pulsebus.Application, []}
     ]
   end
