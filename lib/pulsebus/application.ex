@@ -8,7 +8,7 @@ defmodule Pulsebus.Application do
     children =
       [
         {Pulsebus.Router, []}
-      ] ++ file_logger_children() ++ http_children()
+      ] ++ file_logger_children() ++ desktop_notify_children() ++ http_children()
 
     Supervisor.start_link(children, strategy: :one_for_one, name: Pulsebus.Supervisor)
   end
@@ -39,6 +39,25 @@ defmodule Pulsebus.Application do
         {Pulsebus.Subscribers.FileLogger,
          path: Keyword.get(config, :path, "pulsebus_events.jsonl"),
          patterns: Keyword.get(config, :patterns, ["*"])}
+      ]
+    else
+      []
+    end
+  end
+
+  defp desktop_notify_children do
+    config = Application.get_env(:pulsebus, :desktop_notify, [])
+
+    if Keyword.get(config, :enabled, false) do
+      [
+        {Pulsebus.Subscribers.DesktopNotify,
+         command: Keyword.get(config, :command, "notify-send"),
+         patterns:
+           Keyword.get(config, :patterns, [
+             "repo.tests.failed",
+             "codex.run.finished",
+             "website.deploy.finished"
+           ])}
       ]
     else
       []

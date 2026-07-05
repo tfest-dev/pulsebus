@@ -91,6 +91,25 @@ When enabled, Pulsebus appends one JSON object per line:
 
 Supported patterns are exact topics, prefix wildcards ending in `.*`, and the all-events wildcard `*`.
 
+## Desktop notifications
+
+Desktop notifications are disabled by default. The first implementation targets Linux
+`notify-send`, with the command kept configurable:
+
+```elixir
+config :pulsebus, :desktop_notify,
+  enabled: true,
+  command: "notify-send",
+  patterns: [
+    "repo.tests.failed",
+    "codex.run.finished",
+    "website.deploy.finished"
+  ]
+```
+
+Notifications use a short title such as `Pulsebus: repo.tests.failed` and a body with
+the event source and ID. Command failures are logged and do not affect event routing.
+
 ## Why this exists
 
 Pulsebus is a small side project for learning and using Erlang/Elixir in a place where using the BEAM runtime makes sense.
