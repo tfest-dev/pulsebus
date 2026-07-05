@@ -16,9 +16,14 @@ defmodule Pulsebus do
   def recent_events, do: Router.recent_events()
 
   @doc """
+  Returns topic summaries derived from the default router's recent event buffer.
+  """
+  def topics, do: Router.topics()
+
+  @doc """
   Subscribes `pid` to events whose topic matches `pattern`.
 
-  Patterns are either exact topic strings or prefix wildcards ending in `.*`.
+  Patterns are exact topic strings, prefix wildcards ending in `.*`, or `*`.
   """
   def subscribe(pattern, pid \\ self()), do: Router.subscribe(pattern, pid)
 end

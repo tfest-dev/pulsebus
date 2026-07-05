@@ -13,6 +13,10 @@ defmodule Pulsebus.CLITest do
     assert CLI.parse(["recent"], %{}) == {:ok, %{name: :recent, base_url: @default_url}}
   end
 
+  test "parses topics" do
+    assert CLI.parse(["topics"], %{}) == {:ok, %{name: :topics, base_url: @default_url}}
+  end
+
   test "parses valid emit" do
     assert CLI.parse(
              [
@@ -82,6 +86,17 @@ defmodule Pulsebus.CLITest do
     assert request.url == "http://127.0.0.1:5050/events/recent"
   end
 
+  test "builds topics request" do
+    assert {:ok, request} =
+             CLI.parse(["topics"], %{})
+             |> then(fn {:ok, command} -> CLI.build_request(command) end)
+
+    assert request.method == :get
+    assert request.url == @default_url <> "/events/topics"
+    assert request.headers == []
+    assert request.body == nil
+  end
+
   test "builds emit request body" do
     assert {:ok, command} =
              CLI.parse(
@@ -99,5 +114,30 @@ defmodule Pulsebus.CLITest do
              "source" => "repo",
              "payload" => %{"exit_code" => 101}
            }
+  end
+
+  test "formats topics output preserving order" do
+    assert CLI.format_topics([
+             %{
+               "topic" => "repo.tests.failed",
+               "count" => 3,
+               "last_seen" => "2026-07-01T09:30:00Z"
+             },
+             %{
+               "topic" => "codex.run.finished",
+               "count" => 1,
+               "last_seen" => "2026-07-01T09:27:00Z"
+             }
+           ]) ==
+             """
+             Recent topics:
+
+             repo.tests.failed  count=3 last_seen=2026-07-01T09:30:00Z
+             codex.run.finished count=1 last_seen=2026-07-01T09:27:00Z\
+             """
+  end
+
+  test "formats empty topics output" do
+    assert CLI.format_topics([]) == "No recent topics"
   end
 end

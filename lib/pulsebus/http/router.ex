@@ -38,6 +38,10 @@ defmodule Pulsebus.HTTP.Router do
     send_json(conn, 200, %{events: events})
   end
 
+  get "/events/topics" do
+    send_json(conn, 200, Pulsebus.topics())
+  end
+
   match _ do
     send_json(conn, 404, %{error: "not_found"})
   end

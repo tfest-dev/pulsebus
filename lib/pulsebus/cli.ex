@@ -34,6 +34,10 @@ defmodule Pulsebus.CLI do
     {:ok, %{name: :recent, base_url: base_url(env)}}
   end
 
+  def parse(["topics"], env) do
+    {:ok, %{name: :topics, base_url: base_url(env)}}
+  end
+
   def parse(["emit" | args], env) do
     parse_emit(args, env)
   end
@@ -47,6 +51,10 @@ defmodule Pulsebus.CLI do
 
   def build_request(%{name: :recent, base_url: base_url}) do
     {:ok, %{method: :get, url: base_url <> "/events/recent", headers: [], body: nil}}
+  end
+
+  def build_request(%{name: :topics, base_url: base_url}) do
+    {:ok, %{method: :get, url: base_url <> "/events/topics", headers: [], body: nil}}
   end
 
   def build_request(%{
@@ -137,6 +145,18 @@ defmodule Pulsebus.CLI do
     end
   end
 
+  defp handle_response(:topics, %{status: 200, body: body}) do
+    case Jason.decode(body) do
+      {:ok, topics} when is_list(topics) ->
+        IO.puts(format_topics(topics))
+        0
+
+      _other ->
+        print_error(:invalid_response)
+        1
+    end
+  end
+
   defp handle_response(:emit, %{status: 201, body: body}) do
     case Jason.decode(body) do
       {:ok, %{"id" => id, "topic" => topic}} ->
@@ -173,6 +193,27 @@ defmodule Pulsebus.CLI do
     ts = Map.get(event, "ts", "?")
 
     IO.puts("#{ts} #{id} #{topic} source=#{source}")
+  end
+
+  @doc false
+  def format_topics([]), do: "No recent topics"
+
+  def format_topics(topics) when is_list(topics) do
+    width =
+      topics
+      |> Enum.map(fn topic -> topic |> Map.get("topic", "?") |> String.length() end)
+      |> Enum.max()
+
+    rows =
+      Enum.map(topics, fn topic ->
+        name = Map.get(topic, "topic", "?")
+        count = Map.get(topic, "count", "?")
+        last_seen = Map.get(topic, "last_seen", "?")
+
+        "#{String.pad_trailing(name, width)} count=#{count} last_seen=#{last_seen}"
+      end)
+
+    Enum.join(["Recent topics:", "" | rows], "\n")
   end
 
   defp print_error(reason) do

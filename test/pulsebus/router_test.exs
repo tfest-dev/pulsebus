@@ -76,6 +76,58 @@ defmodule Pulsebus.RouterTest do
     assert Router.recent_events(router) == [third, second]
   end
 
+  test "topics returns empty list when no events exist" do
+    router = start_router()
+
+    assert Router.topics(router) == []
+  end
+
+  test "multiple events for the same topic increment topic count" do
+    router = start_router()
+
+    assert {:ok, first} = Router.emit_event(%{topic: "repo.tests.failed", source: "repo"}, router)
+
+    assert {:ok, second} =
+             Router.emit_event(%{topic: "repo.tests.failed", source: "repo"}, router)
+
+    assert Router.topics(router) == [
+             %{topic: "repo.tests.failed", count: 2, last_seen: second.ts}
+           ]
+
+    assert first.topic == second.topic
+  end
+
+  test "multiple topics are sorted by most recent activity first" do
+    router = start_router()
+
+    assert {:ok, _first} =
+             Router.emit_event(%{topic: "repo.tests.failed", source: "repo"}, router)
+
+    assert {:ok, second} =
+             Router.emit_event(%{topic: "codex.run.finished", source: "codex"}, router)
+
+    assert {:ok, third} = Router.emit_event(%{topic: "repo.tests.failed", source: "repo"}, router)
+
+    assert Router.topics(router) == [
+             %{topic: "repo.tests.failed", count: 2, last_seen: third.ts},
+             %{topic: "codex.run.finished", count: 1, last_seen: second.ts}
+           ]
+  end
+
+  test "topic summary is based only on retained recent buffer contents" do
+    router = start_router(buffer_limit: 2)
+
+    assert {:ok, _first} = Router.emit_event(%{topic: "repo.old", source: "repo"}, router)
+    assert {:ok, second} = Router.emit_event(%{topic: "repo.kept", source: "repo"}, router)
+    assert {:ok, third} = Router.emit_event(%{topic: "repo.kept", source: "repo"}, router)
+
+    assert Router.recent_events(router) == [third, second]
+
+    assert Router.topics(router) == [
+             %{topic: "repo.kept", count: 2, last_seen: third.ts}
+           ]
+  end
+
   test "exact topic subscriber receives matching event" do
     router = start_router()
 

@@ -32,6 +32,10 @@ defmodule Pulsebus.Router do
     GenServer.call(server, :recent_events)
   end
 
+  def topics(server \\ @default_name) do
+    GenServer.call(server, :topics)
+  end
+
   def subscribe(pattern, pid \\ self(), server \\ @default_name) do
     GenServer.call(server, {:subscribe, pattern, pid})
   end
@@ -66,6 +70,10 @@ defmodule Pulsebus.Router do
 
   def handle_call(:recent_events, _from, state) do
     {:reply, state.events, state}
+  end
+
+  def handle_call(:topics, _from, state) do
+    {:reply, summarize_topics(state.events), state}
   end
 
   def handle_call({:subscribe, pattern, pid}, _from, state) do
@@ -121,6 +129,25 @@ defmodule Pulsebus.Router do
 
   defp bounded_prepend(event, events, limit) do
     [event | events] |> Enum.take(limit)
+  end
+
+  defp summarize_topics(events) do
+    {summaries, newest_order} =
+      Enum.reduce(events, {%{}, []}, fn event, {summaries, newest_order} ->
+        case Map.fetch(summaries, event.topic) do
+          {:ok, summary} ->
+            next_summary = %{summary | count: summary.count + 1}
+            {Map.put(summaries, event.topic, next_summary), newest_order}
+
+          :error ->
+            summary = %{topic: event.topic, count: 1, last_seen: event.ts}
+            {Map.put(summaries, event.topic, summary), [event.topic | newest_order]}
+        end
+      end)
+
+    newest_order
+    |> Enum.reverse()
+    |> Enum.map(&Map.fetch!(summaries, &1))
   end
 
   defp format_id(next_id) do

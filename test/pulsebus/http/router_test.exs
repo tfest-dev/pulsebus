@@ -23,6 +23,11 @@ defmodule Pulsebus.HTTP.RouterTest do
     Jason.decode!(conn.resp_body)
   end
 
+  setup do
+    reset_default_router()
+    :ok
+  end
+
   test "GET /health returns 200" do
     conn = request(:get, "/health")
 
@@ -107,6 +112,45 @@ defmodule Pulsebus.HTTP.RouterTest do
     assert previous["id"] == first["id"]
   end
 
+  test "GET /events/topics returns expected summaries" do
+    first =
+      request(:post, "/events", ~s({"topic":"http.topics.repeated","source":"test"}), [
+        {"content-type", "application/json"}
+      ])
+      |> json_response()
+
+    other =
+      request(:post, "/events", ~s({"topic":"http.topics.single","source":"test"}), [
+        {"content-type", "application/json"}
+      ])
+      |> json_response()
+
+    second =
+      request(:post, "/events", ~s({"topic":"http.topics.repeated","source":"test"}), [
+        {"content-type", "application/json"}
+      ])
+      |> json_response()
+
+    conn = request(:get, "/events/topics")
+
+    assert conn.status == 200
+
+    assert json_response(conn) == [
+             %{
+               "topic" => "http.topics.repeated",
+               "count" => 2,
+               "last_seen" => second["ts"]
+             },
+             %{
+               "topic" => "http.topics.single",
+               "count" => 1,
+               "last_seen" => other["ts"]
+             }
+           ]
+
+    assert first["topic"] == second["topic"]
+  end
+
   test "HTTP emission notifies matching subscribers" do
     assert :ok = Pulsebus.subscribe("http.subscriber.*")
 
@@ -118,5 +162,14 @@ defmodule Pulsebus.HTTP.RouterTest do
     assert conn.status == 201
     assert %{"id" => id} = json_response(conn)
     assert_receive {:pulsebus_event, %{id: ^id, topic: "http.subscriber.matched"}}
+  end
+
+  defp reset_default_router do
+    :ok = Supervisor.terminate_child(Pulsebus.Supervisor, Pulsebus.Router)
+
+    case Supervisor.restart_child(Pulsebus.Supervisor, Pulsebus.Router) do
+      {:ok, _pid} -> :ok
+      {:ok, _pid, _info} -> :ok
+    end
   end
 end

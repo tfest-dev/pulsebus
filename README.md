@@ -38,6 +38,12 @@ Read recent events, newest first:
 curl localhost:4040/events/recent
 ```
 
+Summarise recent topics:
+
+```bash
+curl localhost:4040/events/topics
+```
+
 ## CLI usage
 
 Build the local CLI escript:
@@ -64,6 +70,12 @@ Read recent events:
 
 ```bash
 ./pulse recent
+```
+
+Summarise recent topics:
+
+```bash
+./pulse topics
 ```
 
 The CLI defaults to `http://127.0.0.1:4040`. Override it with `PULSEBUS_URL`:
