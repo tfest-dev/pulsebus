@@ -72,6 +72,25 @@ The CLI defaults to `http://127.0.0.1:4040`. Override it with `PULSEBUS_URL`:
 PULSEBUS_URL=http://127.0.0.1:4040 ./pulse health
 ```
 
+## File logging
+
+File logging is disabled by default. Enable it in application config:
+
+```elixir
+config :pulsebus, :file_logger,
+  enabled: true,
+  path: "pulsebus_events.jsonl",
+  patterns: ["*"]
+```
+
+When enabled, Pulsebus appends one JSON object per line:
+
+```json
+{"id":"evt_000001","topic":"repo.tests.failed","source":"repo","ts":"2026-07-01T09:30:00Z","payload":{"cmd":"cargo test","exit_code":101}}
+```
+
+Supported patterns are exact topics, prefix wildcards ending in `.*`, and the all-events wildcard `*`.
+
 ## Why this exists
 
 Pulsebus is a small side project for learning and using Erlang/Elixir in a place where using the BEAM runtime makes sense.

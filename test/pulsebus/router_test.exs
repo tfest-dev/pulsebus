@@ -116,6 +116,15 @@ defmodule Pulsebus.RouterTest do
     refute_receive {:pulsebus_event, _event}, 50
   end
 
+  test "all-events wildcard subscriber receives any topic" do
+    router = start_router()
+
+    assert :ok = Router.subscribe("*", self(), router)
+    assert {:ok, event} = Router.emit_event(%{topic: "repo.tests.failed", source: "repo"}, router)
+
+    assert_receive {:pulsebus_event, ^event}
+  end
+
   test "dead subscriber does not crash router" do
     router = start_router()
 

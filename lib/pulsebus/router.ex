@@ -105,6 +105,8 @@ defmodule Pulsebus.Router do
     end)
   end
 
+  defp topic_matches?("*", _topic), do: true
+
   defp topic_matches?(pattern, topic) do
     if String.ends_with?(pattern, ".*") do
       prefix = String.trim_trailing(pattern, "*")
