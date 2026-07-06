@@ -32,6 +32,26 @@ defmodule Pulsebus.HTTP.Router do
     end
   end
 
+  post "/events/import" do
+    with :ok <- require_json_content_type(conn),
+         {:ok, events} <- read_json_array(conn),
+         {:ok, summary} <- Pulsebus.import_events(events) do
+      send_json(conn, 200, summary)
+    else
+      {:error, :unsupported_content_type} ->
+        send_json(conn, 415, %{error: "unsupported_content_type"})
+
+      {:error, :invalid_json} ->
+        send_json(conn, 400, %{error: "invalid_json"})
+
+      {:error, :invalid_request_body} ->
+        send_json(conn, 400, %{error: "invalid_request_body"})
+
+      {:error, reason} ->
+        send_json(conn, 400, %{error: "import_failed", reason: format_reason(reason)})
+    end
+  end
+
   get "/events/recent" do
     events = Pulsebus.recent_events() |> Enum.map(&event_to_map/1)
 
@@ -61,9 +81,23 @@ defmodule Pulsebus.HTTP.Router do
   end
 
   defp read_json_map(conn) do
+    read_json(conn, fn
+      decoded when is_map(decoded) -> {:ok, decoded}
+      _decoded -> {:error, :invalid_request_body}
+    end)
+  end
+
+  defp read_json_array(conn) do
+    read_json(conn, fn
+      decoded when is_list(decoded) -> {:ok, decoded}
+      _decoded -> {:error, :invalid_request_body}
+    end)
+  end
+
+  defp read_json(conn, validate) do
     case Plug.Conn.read_body(conn) do
       {:ok, body, _conn} ->
-        decode_json_map(body)
+        decode_json(body, validate)
 
       {:more, _partial, _conn} ->
         {:error, :invalid_request_body}
@@ -73,10 +107,9 @@ defmodule Pulsebus.HTTP.Router do
     end
   end
 
-  defp decode_json_map(body) do
+  defp decode_json(body, validate) do
     case Jason.decode(body) do
-      {:ok, decoded} when is_map(decoded) -> {:ok, decoded}
-      {:ok, _decoded} -> {:error, :invalid_request_body}
+      {:ok, decoded} -> validate.(decoded)
       {:error, _reason} -> {:error, :invalid_json}
     end
   end

@@ -16,7 +16,7 @@ defmodule Pulsebus.CLI do
          {:ok, request} <- build_request(command),
          {:ok, response} <-
            http_client.request(request.method, request.url, request.headers, request.body) do
-      handle_response(command.name, response)
+      handle_response(command, response, request)
     else
       {:error, reason} ->
         print_error(reason)
@@ -38,6 +38,10 @@ defmodule Pulsebus.CLI do
     {:ok, %{name: :topics, base_url: base_url(env)}}
   end
 
+  def parse(["import" | args], env) do
+    parse_import(args, env)
+  end
+
   def parse(["emit" | args], env) do
     parse_emit(args, env)
   end
@@ -55,6 +59,20 @@ defmodule Pulsebus.CLI do
 
   def build_request(%{name: :topics, base_url: base_url}) do
     {:ok, %{method: :get, url: base_url <> "/events/topics", headers: [], body: nil}}
+  end
+
+  def build_request(%{name: :import, base_url: base_url, path: path}) do
+    with {:ok, import} <- read_jsonl_import(path) do
+      {:ok,
+       %{
+         method: :post,
+         url: base_url <> "/events/import",
+         headers: [{~c"content-type", ~c"application/json"}],
+         body: Jason.encode!(import.events),
+         local_failed: import.failed,
+         local_errors: import.errors
+       }}
+    end
   end
 
   def build_request(%{
@@ -115,6 +133,13 @@ defmodule Pulsebus.CLI do
   defp parse_emit_opts(["--json"], _opts), do: {:error, :invalid_json}
   defp parse_emit_opts([flag | _rest], _opts), do: {:error, {:unknown_option, flag}}
 
+  defp parse_import([path], env) do
+    {:ok, %{name: :import, base_url: base_url(env), path: path}}
+  end
+
+  defp parse_import([], _env), do: {:error, :missing_import_path}
+  defp parse_import([_path | _extra], _env), do: {:error, :too_many_import_args}
+
   defp require_source(source) when is_binary(source) and byte_size(source) > 0, do: :ok
   defp require_source(_source), do: {:error, :missing_source}
 
@@ -124,12 +149,12 @@ defmodule Pulsebus.CLI do
     |> String.trim_trailing("/")
   end
 
-  defp handle_response(:health, %{status: 200}) do
+  defp handle_response(%{name: :health}, %{status: 200}, _request) do
     IO.puts("Pulsebus is running")
     0
   end
 
-  defp handle_response(:recent, %{status: 200, body: body}) do
+  defp handle_response(%{name: :recent}, %{status: 200, body: body}, _request) do
     case Jason.decode(body) do
       {:ok, %{"events" => []}} ->
         IO.puts("No recent events")
@@ -145,7 +170,7 @@ defmodule Pulsebus.CLI do
     end
   end
 
-  defp handle_response(:topics, %{status: 200, body: body}) do
+  defp handle_response(%{name: :topics}, %{status: 200, body: body}, _request) do
     case Jason.decode(body) do
       {:ok, topics} when is_list(topics) ->
         IO.puts(format_topics(topics))
@@ -157,7 +182,19 @@ defmodule Pulsebus.CLI do
     end
   end
 
-  defp handle_response(:emit, %{status: 201, body: body}) do
+  defp handle_response(%{name: :import}, %{status: 200, body: body}, request) do
+    case Jason.decode(body) do
+      {:ok, summary} when is_map(summary) ->
+        IO.puts(format_import_summary(summary, request))
+        0
+
+      _other ->
+        print_error(:invalid_response)
+        1
+    end
+  end
+
+  defp handle_response(%{name: :emit}, %{status: 201, body: body}, _request) do
     case Jason.decode(body) do
       {:ok, %{"id" => id, "topic" => topic}} ->
         IO.puts("Emitted #{id} #{topic}")
@@ -169,7 +206,7 @@ defmodule Pulsebus.CLI do
     end
   end
 
-  defp handle_response(_command, %{status: status, body: body}) when status >= 400 do
+  defp handle_response(_command, %{status: status, body: body}, _request) when status >= 400 do
     message =
       case Jason.decode(body) do
         {:ok, %{"error" => error, "reason" => reason}} -> "#{error}: #{reason}"
@@ -181,7 +218,7 @@ defmodule Pulsebus.CLI do
     1
   end
 
-  defp handle_response(_command, %{status: status}) do
+  defp handle_response(_command, %{status: status}, _request) do
     print_error("HTTP #{status}")
     1
   end
@@ -216,6 +253,64 @@ defmodule Pulsebus.CLI do
     Enum.join(["Recent topics:", "" | rows], "\n")
   end
 
+  @doc false
+  def read_jsonl_import(path) do
+    case File.read(path) do
+      {:ok, contents} ->
+        decode_jsonl_import(contents)
+
+      {:error, reason} ->
+        {:error, {:file_read_failed, path, reason}}
+    end
+  end
+
+  @doc false
+  def decode_jsonl_import(contents) when is_binary(contents) do
+    {events, errors} =
+      contents
+      |> String.split("\n")
+      |> Enum.with_index(1)
+      |> Enum.reduce({[], []}, fn {line, line_number}, {events, errors} ->
+        line = String.trim(line)
+
+        cond do
+          line == "" ->
+            {events, errors}
+
+          true ->
+            case Jason.decode(line) do
+              {:ok, event} when is_map(event) ->
+                {[event | events], errors}
+
+              {:ok, _decoded} ->
+                {events, [%{line: line_number, reason: "not_an_object"} | errors]}
+
+              {:error, _reason} ->
+                {events, [%{line: line_number, reason: "invalid_json"} | errors]}
+            end
+        end
+      end)
+
+    events = Enum.reverse(events)
+    errors = Enum.reverse(errors)
+
+    if events == [] do
+      {:error, {:no_valid_import_events, length(errors)}}
+    else
+      {:ok, %{events: events, failed: length(errors), errors: errors}}
+    end
+  end
+
+  @doc false
+  def format_import_summary(summary, request \\ %{}) do
+    imported = Map.get(summary, "imported", Map.get(summary, :imported, 0))
+    server_failed = Map.get(summary, "failed", Map.get(summary, :failed, 0))
+    local_failed = Map.get(request, :local_failed, 0)
+    total_failed = server_failed + local_failed
+
+    "Imported #{imported} events, failed #{total_failed}"
+  end
+
   defp print_error(reason) do
     IO.puts(:stderr, "Error: #{format_error(reason)}")
   end
@@ -226,8 +321,15 @@ defmodule Pulsebus.CLI do
   defp format_error(:invalid_json), do: "--json must be valid JSON"
   defp format_error(:payload_not_object), do: "--json must decode to an object"
   defp format_error(:invalid_response), do: "invalid response from Pulsebus"
+  defp format_error(:missing_import_path), do: "import requires a path"
+  defp format_error(:too_many_import_args), do: "import accepts exactly one path"
   defp format_error({:unknown_command, command}), do: "unknown command #{command}"
   defp format_error({:unknown_option, option}), do: "unknown option #{option}"
+  defp format_error({:file_read_failed, path, reason}), do: "cannot read #{path}: #{reason}"
+
+  defp format_error({:no_valid_import_events, failed}),
+    do: "no valid import events (failed #{failed})"
+
   defp format_error(reason) when is_binary(reason), do: reason
   defp format_error(reason), do: inspect(reason)
 end

@@ -38,6 +38,34 @@ defmodule Pulsebus.Event do
 
   def build(_attrs, _id, _ts), do: {:error, :invalid_attrs}
 
+  @doc """
+  Builds a validated event from already-formed imported event data.
+  """
+  def import(attrs) when is_map(attrs) do
+    id = get_attr(attrs, :id)
+    topic = get_attr(attrs, :topic)
+    source = get_attr(attrs, :source)
+    ts = get_attr(attrs, :ts)
+    payload = Map.get(attrs, :payload, Map.get(attrs, "payload"))
+
+    with :ok <- validate_required_string(id, :id),
+         :ok <- validate_required_string(topic, :topic),
+         :ok <- validate_required_string(source, :source),
+         :ok <- validate_required_string(ts, :ts),
+         :ok <- validate_payload(payload) do
+      {:ok,
+       %__MODULE__{
+         id: id,
+         topic: topic,
+         source: source,
+         ts: ts,
+         payload: payload
+       }}
+    end
+  end
+
+  def import(_attrs), do: {:error, :invalid_attrs}
+
   defp get_attr(attrs, key) do
     Map.get(attrs, key, Map.get(attrs, Atom.to_string(key)))
   end

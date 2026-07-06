@@ -36,6 +36,10 @@ defmodule Pulsebus.Router do
     GenServer.call(server, :topics)
   end
 
+  def import_events(events, server \\ @default_name) do
+    GenServer.call(server, {:import_events, events})
+  end
+
   def subscribe(pattern, pid \\ self(), server \\ @default_name) do
     GenServer.call(server, {:subscribe, pattern, pid})
   end
@@ -74,6 +78,27 @@ defmodule Pulsebus.Router do
 
   def handle_call(:topics, _from, state) do
     {:reply, summarize_topics(state.events), state}
+  end
+
+  def handle_call({:import_events, events}, _from, state) when is_list(events) do
+    {imported_events, errors} = validate_import_events(events)
+
+    next_state = %{
+      state
+      | events: bounded_import(imported_events, state.events, state.buffer_limit)
+    }
+
+    summary = %{
+      imported: length(imported_events),
+      failed: length(errors),
+      errors: errors
+    }
+
+    {:reply, {:ok, summary}, next_state}
+  end
+
+  def handle_call({:import_events, _events}, _from, state) do
+    {:reply, {:error, :invalid_events}, state}
   end
 
   def handle_call({:subscribe, pattern, pid}, _from, state) do
@@ -131,6 +156,28 @@ defmodule Pulsebus.Router do
     [event | events] |> Enum.take(limit)
   end
 
+  defp bounded_import(imported_events, events, limit) do
+    imported_events
+    |> Enum.reduce(events, fn event, acc -> bounded_prepend(event, acc, limit) end)
+  end
+
+  defp validate_import_events(events) do
+    events
+    |> Enum.with_index(1)
+    |> Enum.reduce({[], []}, fn {attrs, index}, {imported_events, errors} ->
+      case Event.import(attrs) do
+        {:ok, event} ->
+          {[event | imported_events], errors}
+
+        {:error, reason} ->
+          {imported_events, [%{index: index, reason: format_reason(reason)} | errors]}
+      end
+    end)
+    |> then(fn {imported_events, errors} ->
+      {Enum.reverse(imported_events), Enum.reverse(errors)}
+    end)
+  end
+
   defp summarize_topics(events) do
     {summaries, newest_order} =
       Enum.reduce(events, {%{}, []}, fn event, {summaries, newest_order} ->
@@ -153,4 +200,8 @@ defmodule Pulsebus.Router do
   defp format_id(next_id) do
     "evt_" <> String.pad_leading(Integer.to_string(next_id), 6, "0")
   end
+
+  defp format_reason({:missing_required_field, field}), do: "missing_required_field:#{field}"
+  defp format_reason(reason) when is_atom(reason), do: Atom.to_string(reason)
+  defp format_reason(reason), do: inspect(reason)
 end

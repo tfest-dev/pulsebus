@@ -151,6 +151,43 @@ defmodule Pulsebus.HTTP.RouterTest do
     assert first["topic"] == second["topic"]
   end
 
+  test "POST /events/import accepts valid array" do
+    body =
+      Jason.encode!([
+        %{
+          id: "evt_logged_001",
+          topic: "http.imported",
+          source: "file",
+          ts: "2026-07-01T09:30:00Z",
+          payload: %{"cmd" => "mix test"}
+        }
+      ])
+
+    conn = request(:post, "/events/import", body, [{"content-type", "application/json"}])
+
+    assert conn.status == 200
+    assert json_response(conn) == %{"imported" => 1, "failed" => 0, "errors" => []}
+
+    recent = request(:get, "/events/recent") |> json_response()
+    assert %{"events" => [%{"id" => "evt_logged_001", "topic" => "http.imported"}]} = recent
+  end
+
+  test "POST /events/import rejects non-array JSON" do
+    body =
+      Jason.encode!(%{
+        id: "evt_logged_001",
+        topic: "http.imported",
+        source: "file",
+        ts: "2026-07-01T09:30:00Z",
+        payload: %{}
+      })
+
+    conn = request(:post, "/events/import", body, [{"content-type", "application/json"}])
+
+    assert conn.status == 400
+    assert json_response(conn) == %{"error" => "invalid_request_body"}
+  end
+
   test "HTTP emission notifies matching subscribers" do
     assert :ok = Pulsebus.subscribe("http.subscriber.*")
 

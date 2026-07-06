@@ -44,6 +44,14 @@ Summarise recent topics:
 curl localhost:4040/events/topics
 ```
 
+Import previously logged events:
+
+```bash
+curl -X POST localhost:4040/events/import \
+  -H "content-type: application/json" \
+  -d '[{"id":"evt_000001","topic":"repo.tests.failed","source":"repo","ts":"2026-07-01T09:30:00Z","payload":{"cmd":"cargo test"}}]'
+```
+
 ## CLI usage
 
 Build the local CLI escript:
@@ -76,6 +84,12 @@ Summarise recent topics:
 
 ```bash
 ./pulse topics
+```
+
+Import events from a JSONL file produced by the file logger:
+
+```bash
+./pulse import pulsebus_events.jsonl
 ```
 
 The CLI defaults to `http://127.0.0.1:4040`. Override it with `PULSEBUS_URL`:

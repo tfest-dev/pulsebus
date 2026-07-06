@@ -128,6 +128,171 @@ defmodule Pulsebus.RouterTest do
            ]
   end
 
+  test "valid imported events are added to recent buffer preserving id and timestamp" do
+    router = start_router()
+
+    event = %{
+      "id" => "evt_logged_001",
+      "topic" => "repo.tests.failed",
+      "source" => "file",
+      "ts" => "2026-07-01T09:30:00Z",
+      "payload" => %{"cmd" => "mix test"}
+    }
+
+    assert {:ok, %{imported: 1, failed: 0, errors: []}} = Router.import_events([event], router)
+
+    assert [imported] = Router.recent_events(router)
+    assert imported.id == "evt_logged_001"
+    assert imported.ts == "2026-07-01T09:30:00Z"
+    assert imported.payload == %{"cmd" => "mix test"}
+  end
+
+  test "imported events do not increment normal emit IDs" do
+    router = start_router()
+
+    assert {:ok, %{imported: 1}} =
+             Router.import_events(
+               [
+                 %{
+                   "id" => "evt_logged_999",
+                   "topic" => "repo.imported",
+                   "source" => "file",
+                   "ts" => "2026-07-01T09:30:00Z",
+                   "payload" => %{}
+                 }
+               ],
+               router
+             )
+
+    assert {:ok, event} = Router.emit_event(%{topic: "repo.emitted", source: "repo"}, router)
+
+    assert event.id == "evt_000001"
+  end
+
+  test "imported events affect topic summaries" do
+    router = start_router()
+
+    assert {:ok, %{imported: 3, failed: 0}} =
+             Router.import_events(
+               [
+                 %{
+                   "id" => "evt_logged_001",
+                   "topic" => "repo.tests.failed",
+                   "source" => "file",
+                   "ts" => "2026-07-01T09:30:00Z",
+                   "payload" => %{}
+                 },
+                 %{
+                   "id" => "evt_logged_002",
+                   "topic" => "codex.run.finished",
+                   "source" => "file",
+                   "ts" => "2026-07-01T09:31:00Z",
+                   "payload" => %{}
+                 },
+                 %{
+                   "id" => "evt_logged_003",
+                   "topic" => "repo.tests.failed",
+                   "source" => "file",
+                   "ts" => "2026-07-01T09:32:00Z",
+                   "payload" => %{}
+                 }
+               ],
+               router
+             )
+
+    assert Router.topics(router) == [
+             %{topic: "repo.tests.failed", count: 2, last_seen: "2026-07-01T09:32:00Z"},
+             %{topic: "codex.run.finished", count: 1, last_seen: "2026-07-01T09:31:00Z"}
+           ]
+  end
+
+  test "mixed valid and invalid import returns clear summary" do
+    router = start_router()
+
+    assert {:ok,
+            %{
+              imported: 1,
+              failed: 1,
+              errors: [%{index: 2, reason: "missing_required_field:id"}]
+            }} =
+             Router.import_events(
+               [
+                 %{
+                   "id" => "evt_logged_001",
+                   "topic" => "repo.tests.failed",
+                   "source" => "file",
+                   "ts" => "2026-07-01T09:30:00Z",
+                   "payload" => %{}
+                 },
+                 %{
+                   "topic" => "repo.tests.failed",
+                   "source" => "file",
+                   "ts" => "2026-07-01T09:31:00Z",
+                   "payload" => %{}
+                 }
+               ],
+               router
+             )
+
+    assert length(Router.recent_events(router)) == 1
+  end
+
+  test "recent buffer bound still applies after import" do
+    router = start_router(buffer_limit: 2)
+
+    assert {:ok, %{imported: 3, failed: 0}} =
+             Router.import_events(
+               [
+                 %{
+                   "id" => "evt_logged_001",
+                   "topic" => "repo.one",
+                   "source" => "file",
+                   "ts" => "2026-07-01T09:30:00Z",
+                   "payload" => %{}
+                 },
+                 %{
+                   "id" => "evt_logged_002",
+                   "topic" => "repo.two",
+                   "source" => "file",
+                   "ts" => "2026-07-01T09:31:00Z",
+                   "payload" => %{}
+                 },
+                 %{
+                   "id" => "evt_logged_003",
+                   "topic" => "repo.three",
+                   "source" => "file",
+                   "ts" => "2026-07-01T09:32:00Z",
+                   "payload" => %{}
+                 }
+               ],
+               router
+             )
+
+    assert Enum.map(Router.recent_events(router), & &1.id) == ["evt_logged_003", "evt_logged_002"]
+  end
+
+  test "imported events do not notify subscribers" do
+    router = start_router()
+
+    assert :ok = Router.subscribe("*", self(), router)
+
+    assert {:ok, %{imported: 1}} =
+             Router.import_events(
+               [
+                 %{
+                   "id" => "evt_logged_001",
+                   "topic" => "repo.tests.failed",
+                   "source" => "file",
+                   "ts" => "2026-07-01T09:30:00Z",
+                   "payload" => %{}
+                 }
+               ],
+               router
+             )
+
+    refute_receive {:pulsebus_event, _event}, 50
+  end
+
   test "exact topic subscriber receives matching event" do
     router = start_router()
 

@@ -21,6 +21,11 @@ defmodule Pulsebus do
   def topics, do: Router.topics()
 
   @doc """
+  Imports already-formed events into the default router's recent buffer.
+  """
+  def import_events(events), do: Router.import_events(events)
+
+  @doc """
   Subscribes `pid` to events whose topic matches `pattern`.
 
   Patterns are exact topic strings, prefix wildcards ending in `.*`, or `*`.
